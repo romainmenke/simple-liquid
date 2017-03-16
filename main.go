@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/karlseguin/liquid"
@@ -16,8 +17,8 @@ import (
 
 func main() {
 
-	core.RegisterFilter("divided_by", DummyFactory)
-	core.RegisterFilter("round", DummyFactory)
+	core.RegisterFilter("divided_by", DividedByFactory)
+	core.RegisterFilter("round", RoundFactory)
 
 	dataSource := flag.String("data", "./", "data directory")
 	templateSource := flag.String("templ", "./", "template directory")
@@ -59,10 +60,10 @@ FILE_ITERATOR:
 		outData := make(map[string]interface{})
 		err := json.Unmarshal(data, &outData)
 		if err != nil {
-			panic(err)
+			panic(f.Name() + " : " + err.Error())
 		}
 
-		render := render(outData, string(template))
+		render := render(f.Name(), outData, string(template))
 
 		writeFile(render, f.Name(), extension, outDir)
 	}
@@ -91,10 +92,10 @@ func writeFile(content []byte, fileName string, extension string, out string) {
 
 }
 
-func render(data map[string]interface{}, templ string) []byte {
+func render(filename string, data map[string]interface{}, templ string) []byte {
 	template, err := liquid.ParseString(templ, nil)
 	if err != nil {
-		panic(err)
+		panic(filename + " : " + err.Error())
 	}
 	writer := new(bytes.Buffer)
 	template.Render(writer, data)
@@ -131,4 +132,93 @@ type DummyFilter struct {
 func (f *DummyFilter) Dummy(input interface{}, data map[string]interface{}) interface{} {
 
 	return input
+}
+
+func DividedByFactory(parameters []core.Value) core.Filter {
+	if len(parameters) == 0 {
+		return (&DividedByFilter{}).DividedBy
+	}
+	return (&DividedByFilter{parameters[0]}).DividedBy
+}
+
+type DividedByFilter struct {
+	divider core.Value
+}
+
+func (f *DividedByFilter) DividedBy(input interface{}, data map[string]interface{}) interface{} {
+
+	var inputFloat float64
+	var dividerFloat float64
+	var err error
+
+	switch v := input.(type) {
+	case float64:
+		inputFloat = v
+	case string:
+		inputFloat, err = strconv.ParseFloat(v, 64)
+		if err != nil {
+			panic(err)
+		}
+	case int:
+		inputFloat = float64(v)
+	}
+
+	switch v := f.divider.Underlying().(type) {
+	case float64:
+		dividerFloat = v
+	case string:
+		dividerFloat, err = strconv.ParseFloat(v, 64)
+		if err != nil {
+			panic(err)
+		}
+	case int:
+		dividerFloat = float64(v)
+	}
+
+	return inputFloat / dividerFloat
+}
+
+func RoundFactory(parameters []core.Value) core.Filter {
+	if len(parameters) == 0 {
+		return (&RoundFilter{}).Round
+	}
+	return (&RoundFilter{parameters[0]}).Round
+}
+
+type RoundFilter struct {
+	decimals core.Value
+}
+
+func (f *RoundFilter) Round(input interface{}, data map[string]interface{}) interface{} {
+
+	var inputFloat float64
+	var decimalInt int
+	var err error
+
+	switch v := input.(type) {
+	case float64:
+		inputFloat = v
+	case string:
+		inputFloat, err = strconv.ParseFloat(v, 64)
+		if err != nil {
+			panic(err)
+		}
+	case int:
+		inputFloat = float64(v)
+	}
+
+	switch v := f.decimals.Underlying().(type) {
+	case float64:
+		decimalInt = int(v)
+	case string:
+		temp, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		decimalInt = int(temp)
+	case int:
+		decimalInt = v
+	}
+
+	return fmt.Sprintf("%."+fmt.Sprint(decimalInt)+"f", inputFloat)
 }
