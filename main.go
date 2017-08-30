@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -54,11 +55,20 @@ FILE_ITERATOR:
 		nameComponents := strings.Split(f.Name(), ".")
 		extension := nameComponents[len(nameComponents)-1]
 
-		data := readFile(dataDir + f.Name())
-		template := readFile(templDir + strings.TrimSuffix(f.Name(), extension) + "html")
+		data, err := readFile(dataDir + f.Name())
+		if err != nil {
+			log.Println(f.Name() + " : " + err.Error())
+			continue FILE_ITERATOR
+		}
+
+		template, err := readFile(templDir + strings.TrimSuffix(f.Name(), extension) + "html")
+		if err != nil {
+			log.Println(f.Name() + " : " + err.Error())
+			continue FILE_ITERATOR
+		}
 
 		outData := make(map[string]interface{})
-		err := json.Unmarshal(data, &outData)
+		err = json.Unmarshal(data, &outData)
 		if err != nil {
 			panic(f.Name() + " : " + err.Error())
 		}
@@ -69,18 +79,26 @@ FILE_ITERATOR:
 	}
 }
 
-func readFile(name string) []byte {
+func readFile(name string) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	file, err := os.Open(name)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
+
+	defer func() {
+		err := file.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
 	_, err = io.Copy(buf, file)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	file.Close()
-	return buf.Bytes()
+
+	return buf.Bytes(), nil
 }
 
 func writeFile(content []byte, fileName string, extension string, out string) {
